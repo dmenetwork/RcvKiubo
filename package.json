@@ -1,0 +1,49 @@
+{
+  "name": "rcv-kiubo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Servicio de documentos recibidos y Registro de Compras y Ventas del SII: XML de intercambio, aceptación/reclamo, estado de DTE, import del RCV y cruces.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --packages=external --sourcemap --outfile=dist/index.js",
+    "start": "node --enable-source-maps dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --maxWorkers=1",
+    "test:core": "vitest run src/core",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:up": "docker compose -f docker-compose.dev.yml up -d --wait db",
+    "db:down": "docker compose -f docker-compose.dev.yml down",
+    "consumidor:crear": "tsx scripts/crear-consumidor.ts",
+    "resellar": "tsx scripts/resellar.ts",
+    "smoke:sii": "tsx scripts/smoke-sii.ts",
+    "probar:rcv-portal": "tsx scripts/probar-rcv-portal.ts"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.5.2",
+    "helmet": "^8.2.0",
+    "node-forge": "^1.3.1",
+    "postal-mime": "^4.0.7",
+    "prisma": "^7.8.0",
+    "undici": "^7.30.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.15.0",
+    "@types/node-forge": "^1.3.11",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.20.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  }
+}

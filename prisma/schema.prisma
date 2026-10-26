@@ -1,0 +1,354 @@
+// Modelo de datos de RcvKiubo. Multi-consumidor: cada sistema que usa el servicio (Kiubo,
+// api-facturacion, …) es un `Consumidor` con sus API keys, y sólo ve sus contribuyentes.
+// El aislamiento es por `where consumidorId` en los workers (sin RLS), como en Kiubo.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Ambiente {
+  certificacion
+  produccion
+}
+
+enum Operacion {
+  COMPRA
+  VENTA
+}
+
+enum EstadoEntrega {
+  pendiente
+  entregado
+  fallido
+}
+
+/// Un sistema que consume el servicio.
+model Consumidor {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre                String
+  activo                Boolean  @default(true)
+  /// URL a la que se mandan los eventos (webhooks). Sin URL no se encolan.
+  webhookUrl            String?  @map("webhook_url")
+  /// Secreto HMAC de los webhooks, sellado con la llave maestra (AAD = id del consumidor).
+  webhookSecretoSellado Bytes?   @map("webhook_secreto_sellado")
+  creadoEn              DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  apiKeys        ApiKey[]
+  contribuyentes Contribuyente[]
+  entregas       WebhookEntrega[]
+
+  @@map("consumidores")
+}
+
+/// Se guarda el sha256 de la key, nunca la key: un dump de la base no entrega credenciales usables.
+model ApiKey {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  consumidorId String     @map("consumidor_id") @db.Uuid
+  nombre       String
+  /// Primeros caracteres de la key, para reconocerla en un listado.
+  prefijo      String
+  hash         String     @unique
+  creadaEn     DateTime   @default(now()) @map("creada_en") @db.Timestamptz(6)
+  revocadaEn   DateTime?  @map("revocada_en") @db.Timestamptz(6)
+  ultimoUsoEn  DateTime?  @map("ultimo_uso_en") @db.Timestamptz(6)
+  consumidor   Consumidor @relation(fields: [consumidorId], references: [id], onDelete: Cascade)
+
+  @@index([consumidorId])
+  @@map("api_keys")
+}
+
+/// Una empresa (RUT) por la que el consumidor recibe documentos y habla con el SII.
+model Contribuyente {
+  id                String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  consumidorId      String     @map("consumidor_id") @db.Uuid
+  /// Forma SII: `12345678-9`.
+  rut               String
+  razonSocial       String?    @map("razon_social")
+  ambiente          Ambiente
+  /// Casilla de intercambio (en minúsculas) que enruta los correos del Email Worker a este RUT.
+  /// La asigna el OPERADOR (API de admin), no el consumidor: quien la tuviera recibiría las facturas.
+  correoIntercambio String?    @unique @map("correo_intercambio")
+  activo            Boolean    @default(true)
+  /// Con cuántas horas de anticipación se avisa que vence el plazo de 8 días.
+  horasAvisoPlazo   Int        @default(48) @map("horas_aviso_plazo")
+  /// Si los jobs consultan solos al SII (fecha de recepción, eventos, estado).
+  sincronizarSii    Boolean    @default(true) @map("sincronizar_sii")
+  /// Si el job baja solo el RCV del portal del SII (mes actual y anterior).
+  sincronizarRcv    Boolean    @default(true) @map("sincronizar_rcv")
+  creadoEn         DateTime   @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn     DateTime   @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  consumidor     Consumidor         @relation(fields: [consumidorId], references: [id], onDelete: Cascade)
+  certificado    Certificado?
+  documentos     Documento[]
+  importaciones  ImportacionRcv[]
+  resumenesRcv   RcvResumen[]
+  sincronizaciones SincronizacionRcv[]
+  acciones       AccionRegistrada[]
+  correos        Correo[]
+
+  @@unique([consumidorId, rut, ambiente])
+  @@map("contribuyentes")
+}
+
+/// El certificado vigente del contribuyente. Rotarlo reemplaza la fila (queda en `auditoria`).
+model Certificado {
+  id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contribuyenteId    String        @unique @map("contribuyente_id") @db.Uuid
+  rutTitular         String        @map("rut_titular")
+  nombreTitular      String        @map("nombre_titular")
+  emisor             String
+  validoDesde        DateTime      @map("valido_desde") @db.Timestamptz(6)
+  validoHasta        DateTime      @map("valido_hasta") @db.Timestamptz(6)
+  /// sha256 del DER.
+  huella             String
+  /// X.509 en base64 (público).
+  x509               String
+  /// Llave privada PEM sellada (AES-256-GCM, AAD = id del contribuyente). La clave del .pfx NO se guarda.
+  llaveSellada       Bytes         @map("llave_sellada")
+  avisoVencimientoEn DateTime?     @map("aviso_vencimiento_en") @db.Timestamptz(6)
+  creadoEn           DateTime      @default(now()) @map("creado_en") @db.Timestamptz(6)
+  contribuyente      Contribuyente @relation(fields: [contribuyenteId], references: [id], onDelete: Cascade)
+
+  @@map("certificados")
+}
+
+/// Un documento tributario, por su identidad (contraparte, tipo, folio). Junta lo que se sabe de él
+/// por las tres fuentes: el XML del correo de intercambio, el CSV del RCV y los servicios del SII.
+model Documento {
+  id                     String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contribuyenteId        String        @map("contribuyente_id") @db.Uuid
+  operacion              Operacion
+  /// En compras, el emisor (proveedor); en ventas, el receptor (cliente).
+  rutContraparte         String        @map("rut_contraparte")
+  razonSocialContraparte String?       @map("razon_social_contraparte")
+  tipoDte                Int           @map("tipo_dte")
+  folio                  Int
+  fechaEmision           DateTime?     @map("fecha_emision") @db.Date
+  montoExento            BigInt?       @map("monto_exento")
+  montoNeto              BigInt?       @map("monto_neto")
+  montoIva               BigInt?       @map("monto_iva")
+  montoTotal             BigInt?       @map("monto_total")
+
+  // ── XML (correo de intercambio o subida directa) ──
+  enXml                  Boolean       @default(false) @map("en_xml")
+  /// El `<DTE>…</DTE>` EXACTO como llegó: sus firmas son sobre esos bytes.
+  xml                    String?
+  xmlSha256              String?       @map("xml_sha256")
+  codificacion           String?
+  /// `SignatureValue` del documento, para `QueryEstDteAv`.
+  firmaDte               String?       @map("firma_dte")
+  /// Resultado de la verificación criptográfica local: `{ ok, problemas, sinLlaveSii }`.
+  verificacion           Json?
+  xmlRecibidoEn          DateTime?     @map("xml_recibido_en") @db.Timestamptz(6)
+
+  // ── RCV (CSV importado) ──
+  enRcv                  Boolean       @default(false) @map("en_rcv")
+  estadoRcv              String?       @map("estado_rcv")
+  periodoRcv             String?       @map("periodo_rcv")
+  datosRcv               Json?         @map("datos_rcv")
+
+  // ── SII ──
+  fechaRecepcionSii      DateTime?     @map("fecha_recepcion_sii") @db.Timestamptz(6)
+  plazoVence             DateTime?     @map("plazo_vence") @db.Timestamptz(6)
+  /// Evento vigente del receptor: ACD, ERM, RCD, RFP, RFT.
+  eventoReceptor         String?       @map("evento_receptor")
+  eventosSii             Json?         @map("eventos_sii")
+  eventosConsultadosEn   DateTime?     @map("eventos_consultados_en") @db.Timestamptz(6)
+  cedibilidad            String?
+  /// Código de `QueryEstDte` (DOK, DNK, FAU, …) y su clase.
+  estadoSii              String?       @map("estado_sii")
+  claseEstadoSii         String?       @map("clase_estado_sii")
+  estadoSiiEn            DateTime?     @map("estado_sii_en") @db.Timestamptz(6)
+
+  // ── Seguimiento ──
+  /// Cuándo le toca al job volver a preguntarle al SII por este documento. `null` = nada pendiente.
+  proximaRevisionEn      DateTime?     @map("proxima_revision_en") @db.Timestamptz(6)
+  /// Revisiones seguidas en que el SII todavía no tenía lo esperado (recepción, estado): el backoff.
+  intentosRevision       Int           @default(0) @map("intentos_revision")
+  /// Revisiones seguidas que FALLARON (red, certificado). Con demasiadas, el seguimiento se detiene y avisa.
+  erroresRevision        Int           @default(0) @map("errores_revision")
+  errorRevision          String?       @map("error_revision")
+  avisoPlazoEn           DateTime?     @map("aviso_plazo_en") @db.Timestamptz(6)
+  avisoTacitoEn          DateTime?     @map("aviso_tacito_en") @db.Timestamptz(6)
+  creadoEn               DateTime      @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn          DateTime      @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  contribuyente          Contribuyente @relation(fields: [contribuyenteId], references: [id], onDelete: Cascade)
+  acciones               AccionRegistrada[]
+
+  @@unique([contribuyenteId, operacion, rutContraparte, tipoDte, folio])
+  @@index([contribuyenteId, operacion, fechaEmision])
+  @@index([contribuyenteId, periodoRcv])
+  @@index([proximaRevisionEn])
+  @@index([plazoVence])
+  @@map("documentos")
+}
+
+/// Cada acción de aceptación/reclamo pedida al SII por este servicio, con lo que contestó.
+model AccionRegistrada {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contribuyenteId String        @map("contribuyente_id") @db.Uuid
+  documentoId     String?       @map("documento_id") @db.Uuid
+  rutEmisorDoc    String        @map("rut_emisor_doc")
+  tipoDte         Int           @map("tipo_dte")
+  folio           Int
+  accion          String
+  codigo          Int?
+  glosa           String?
+  /// registrado | ya_estaba | rechazado | reintentar | error
+  resultado       String
+  error           String?
+  apiKeyId        String?       @map("api_key_id") @db.Uuid
+  creadoEn        DateTime      @default(now()) @map("creado_en") @db.Timestamptz(6)
+  contribuyente   Contribuyente @relation(fields: [contribuyenteId], references: [id], onDelete: Cascade)
+  documento       Documento?    @relation(fields: [documentoId], references: [id], onDelete: SetNull)
+
+  @@index([contribuyenteId, creadoEn])
+  @@map("acciones_registradas")
+}
+
+/// Un correo entrante de la casilla de intercambio. Se deduplica por (sha256 del crudo, casilla): el
+/// Email Worker reintenta, y reintentar algo que sí entró no duplica; el mismo correo a DOS casillas
+/// son dos entradas.
+model Correo {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contribuyenteId String?        @map("contribuyente_id") @db.Uuid
+  /// En minúsculas.
+  destinatario    String
+  remitente       String?
+  asunto          String?
+  messageId       String?        @map("message_id")
+  sha256          String
+  /// dte | respuesta | sin_dte | error | sin_destino
+  estado          String
+  documentos      Int            @default(0)
+  error           String?
+  /// El crudo SÓLO cuando no se pudo procesar: para reprocesarlo, no para archivarlo todo.
+  crudo           Bytes?
+  creadoEn        DateTime       @default(now()) @map("creado_en") @db.Timestamptz(6)
+  contribuyente   Contribuyente? @relation(fields: [contribuyenteId], references: [id], onDelete: SetNull)
+
+  @@unique([sha256, destinatario])
+  @@index([contribuyenteId, creadoEn])
+  @@map("correos")
+}
+
+/// Un CSV del RCV importado. Re-importar el mismo archivo es idempotente.
+model ImportacionRcv {
+  id                   String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contribuyenteId      String        @map("contribuyente_id") @db.Uuid
+  operacion            Operacion
+  estadoRcv            String?       @map("estado_rcv")
+  periodo              String
+  nombreArchivo        String?       @map("nombre_archivo")
+  sha256               String
+  filas                Int
+  nuevos               Int
+  actualizados         Int
+  problemas            Json
+  columnasDesconocidas Json          @map("columnas_desconocidas")
+  creadoEn             DateTime      @default(now()) @map("creado_en") @db.Timestamptz(6)
+  contribuyente        Contribuyente @relation(fields: [contribuyenteId], references: [id], onDelete: Cascade)
+
+  @@unique([contribuyenteId, sha256])
+  @@map("importaciones_rcv")
+}
+
+/// El resumen del RCV tal como lo muestra el SII: una fila por (período, operación, estado, tipo).
+/// Se reemplaza en cada sincronización; es la "primera pantalla" del registro.
+model RcvResumen {
+  id                    String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contribuyenteId       String        @map("contribuyente_id") @db.Uuid
+  periodo               String
+  operacion             Operacion
+  /// REGISTRO, PENDIENTE, NO_INCLUIR, RECLAMADO (ventas: REGISTRO).
+  estadoRcv             String        @map("estado_rcv")
+  tipoDte               Int           @map("tipo_dte")
+  nombreTipoDoc         String        @map("nombre_tipo_doc")
+  /// DET_ELE (con detalle) o RESUMEN (sólo totales, como las boletas).
+  tipoIngreso           String        @map("tipo_ingreso")
+  tieneDetalle          Boolean       @map("tiene_detalle")
+  totalDocumentos       Int           @map("total_documentos")
+  montoExento           BigInt        @map("monto_exento")
+  montoNeto             BigInt        @map("monto_neto")
+  montoIva              BigInt        @map("monto_iva")
+  montoIvaNoRecuperable BigInt        @map("monto_iva_no_recuperable")
+  ivaUsoComun           BigInt        @map("iva_uso_comun")
+  montoTotal            BigInt        @map("monto_total")
+  sincronizadoEn        DateTime      @map("sincronizado_en") @db.Timestamptz(6)
+  contribuyente         Contribuyente @relation(fields: [contribuyenteId], references: [id], onDelete: Cascade)
+
+  @@unique([contribuyenteId, periodo, operacion, estadoRcv, tipoDte])
+  @@map("rcv_resumenes")
+}
+
+/// Cada bajada del RCV desde el portal del SII.
+model SincronizacionRcv {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contribuyenteId String        @map("contribuyente_id") @db.Uuid
+  periodo         String
+  /// en_curso | ok | error | captcha
+  estado          String
+  documentos      Int           @default(0)
+  nuevos          Int           @default(0)
+  actualizados    Int           @default(0)
+  problemas       Json?
+  error           String?
+  iniciadaEn      DateTime      @default(now()) @map("iniciada_en") @db.Timestamptz(6)
+  terminadaEn     DateTime?     @map("terminada_en") @db.Timestamptz(6)
+  contribuyente   Contribuyente @relation(fields: [contribuyenteId], references: [id], onDelete: Cascade)
+
+  @@index([contribuyenteId, periodo, iniciadaEn])
+  @@map("sincronizaciones_rcv")
+}
+
+/// Bandeja de salida de webhooks (outbox). `clave` deduplica: el mismo aviso no se manda dos veces.
+model WebhookEntrega {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  consumidorId    String        @map("consumidor_id") @db.Uuid
+  evento          String
+  clave           String
+  payload         Json
+  estado          EstadoEntrega @default(pendiente)
+  intentos        Int           @default(0)
+  proximoIntentoEn DateTime     @default(now()) @map("proximo_intento_en") @db.Timestamptz(6)
+  ultimoStatus    Int?          @map("ultimo_status")
+  ultimoError     String?       @map("ultimo_error")
+  entregadoEn     DateTime?     @map("entregado_en") @db.Timestamptz(6)
+  creadoEn        DateTime      @default(now()) @map("creado_en") @db.Timestamptz(6)
+  consumidor      Consumidor    @relation(fields: [consumidorId], references: [id], onDelete: Cascade)
+
+  @@unique([consumidorId, clave])
+  @@index([estado, proximoIntentoEn])
+  @@map("webhook_entregas")
+}
+
+/// Rastro de lo que cambia configuración o credenciales.
+model Auditoria {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  consumidorId    String?  @map("consumidor_id") @db.Uuid
+  contribuyenteId String?  @map("contribuyente_id") @db.Uuid
+  apiKeyId        String?  @map("api_key_id") @db.Uuid
+  accion          String
+  detalle         Json?
+  creadoEn        DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  @@index([consumidorId, creadoEn])
+  @@map("auditoria")
+}
+
+/// Latido del Email Worker: sin esto, "no llegaron facturas" se ve igual que "el buzón está caído".
+model Latido {
+  id         String    @id
+  ultimoEn   DateTime  @map("ultimo_en") @db.Timestamptz(6)
+  pendientes Int?
+  masAntiguo DateTime? @map("mas_antiguo") @db.Timestamptz(6)
+
+  @@map("latidos")
+}

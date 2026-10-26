@@ -1,0 +1,22 @@
+# Postgres de desarrollo y de tests. `npm run db:up`.
+# Puerto 5434 para no chocar con el Postgres de Kiubo (5432/5433).
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: rcv
+      POSTGRES_PASSWORD: rcv
+      POSTGRES_DB: rcv_kiubo
+    ports:
+      - "5434:5432"
+    volumes:
+      - rcv_kiubo_dev:/var/lib/postgresql/data
+      - ./deploy/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rcv -d rcv_kiubo"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  rcv_kiubo_dev:

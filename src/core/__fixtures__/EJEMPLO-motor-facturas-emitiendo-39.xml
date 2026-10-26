@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<DTE version="1.0">
+<Documento ID="FOLIO902TIPO39">
+<Encabezado>
+<IdDoc>
+<TipoDTE>39</TipoDTE>
+<Folio>902</Folio>
+<FchEmis>2026-08-06</FchEmis>
+<IndServicio>3</IndServicio>
+<FmaPago>1</FmaPago>
+</IdDoc>
+<Emisor>
+<RUTEmisor>76543210-3</RUTEmisor>
+<RznSoc>SUPERMERCADO DE PRUEBA LTDA</RznSoc>
+<GiroEmis>SUPERMERCADOS</GiroEmis>
+<Telefono></Telefono>
+<CorreoEmisor>boletas@ejemplo.cl</CorreoEmisor>
+<Acteco>471100</Acteco>
+<CdgSIISucur></CdgSIISucur>
+<DirOrigen>CENTENARIO 171</DirOrigen>
+<CmnaOrigen>CHONCHI</CmnaOrigen>
+<CiudadOrigen>CHONCHI</CiudadOrigen>
+</Emisor>
+<Receptor>
+<RUTRecep>66666666-6</RUTRecep>
+<RznSocRecep>PUBLICO GENERAL</RznSocRecep>
+<GiroRecep></GiroRecep>
+<Contacto></Contacto>
+<CorreoRecep></CorreoRecep>
+<DirRecep>SIN DIRECCION</DirRecep>
+<CmnaRecep>CHONCHI</CmnaRecep>
+<CiudadRecep>CHONCHI</CiudadRecep>
+</Receptor>
+<Totales>
+<MntNeto>1681</MntNeto>
+<TasaIVA>19</TasaIVA>
+<IVA>319</IVA>
+<MntTotal>2000</MntTotal>			
+</Totales>
+</Encabezado>
+<Detalle>
+<NroLinDet>1</NroLinDet>
+<CdgItem>
+<TpoCodigo>EAN</TpoCodigo>
+<VlrCodigo>7801234567890</VlrCodigo>
+</CdgItem>
+<NmbItem>PAN AMASADO KG</NmbItem>
+<QtyItem>1</QtyItem>
+<UnmdItem>UN</UnmdItem>
+<PrcItem>840</PrcItem>
+<MontoItem>840</MontoItem>
+</Detalle>
+<Detalle>
+<NroLinDet>2</NroLinDet>
+<CdgItem>
+<TpoCodigo>EAN</TpoCodigo>
+<VlrCodigo>7801111111111</VlrCodigo>
+</CdgItem>
+<NmbItem>CERVEZA LATA 470CC</NmbItem>
+<QtyItem>1</QtyItem>
+<UnmdItem>UN</UnmdItem>
+<PrcItem>841</PrcItem>
+<MontoItem>841</MontoItem>
+</Detalle>
+<TED version="1.0">
+<DD><RE>76543210-3</RE><TD>39</TD><F>902</F><FE>2026-08-06</FE><RR>66666666-6</RR><RSR>PUBLICO GENERAL</RSR><MNT>2000</MNT><IT1>PAN AMASADO KG</IT1><CAF version="1.0"><DA><RE>76543210-3</RE><RS>SUPERMERCADO DE PRUEBA LTDA</RS><TD>39</TD><RNG><D>900</D><H>999</H></RNG><FA>2026-07-01</FA><RSAPK><M>uZ6ZLsIShIVIM2SbVyTAtDZ7wk7XqflkdsTe3iv0RCPKwdNMHbio0yY6V+ua7upbSxPeRqCbhqmqs24qHk1A9w==</M><E>AQAB</E></RSAPK><IDK>300</IDK></DA><FRMA algoritmo="SHA1withRSA">RklSTUFERVBSVUVCQQ==</FRMA></CAF><TSTED>2026-08-06T16:31:28</TSTED></DD>
+<FRMT algoritmo="SHA1withRSA">hsR3CtJz8f9IuooBTipm9g2ceRB5SfHU3e/W9FN0AcS8C0mnyuRK7gYBT4O7Lc896kTHpLq9yN4b8Hf5FW6+qA==</FRMT>
+</TED>
+<TmstFirma>2026-08-06T16:31:28</TmstFirma>
+</Documento>
+<Signature xmlns="http://www.w3.org/2000/09/xmldsig#"><SignedInfo><CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/><SignatureMethod Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha1"/><Reference URI="#FOLIO902TIPO39"><Transforms><Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/></Transforms><DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha1"/><DigestValue>6Nb2iXYIBwe8IakNNt0854e5hyk=</DigestValue></Reference></SignedInfo><SignatureValue>P+644CDS9xAXOxoLAJ2v/fjWJqcXTWCTIOvIqdAujLFq1cxvT1Lv+HcoYVoa9CJ9pGiwFldQGQxaUOaEjo068YvQAqPoT4QBDFskcC7YQJfIk7eyCGivVp83FaIHpO6kDUpfTONKp4QzOyKLfnYSNdP/R5mlNFOaXo4Eqdhj6nvCkbjGyahIktwsnhIm3tx+KzUAkvJCwj4S6fmx0Ch7hvJFY9MUGSJTenKb6kmtD5IUNR8JeW4lLlmlQV3yjzWAXIM7x7Gr8LJqh2KRc19372fA3HOA2Thy0vSkPFGXz+9ZtIwXltg3oNW5L0aoM1mv/jKyV3jvLif2tcFUMe+m2A==</SignatureValue><KeyInfo><KeyValue><RSAKeyValue><Modulus>w1YH/CxcLCov6cxJn7XJV5/HQYmCof7/qowPi54Gn1iG65NQlfXqKPR4dsu3b+7I0cdCDGZ8n+JZLDe84NWxcTVTwWiiV0JdE/yMTD80RF1z4JMF4TfVAOrkWTcs8lNA+L3QsL8Dwv9zLQ8MnSNdTGguYlpirSXZ0lhyUR/2o1YUJvW6xsgYZraZ51i56C7SV1RKSm8sr2BerQroBviL8GarxpKSBc4Qjddq9lMdDRecLpPi4eKUWZS7/Ci084imPz7NGCuWUPukPl13r+0ZhOI38aEG12Mvh9NTEFuzPi8CcO6WZbh4V2PrE/OHnq/VSwxZlDFnImjEvVmbaV9r4Q==</Modulus><Exponent>AQAB</Exponent></RSAKeyValue></KeyValue><X509Data><X509Certificate>MIIB</X509Certificate></X509Data></KeyInfo></Signature></DTE>

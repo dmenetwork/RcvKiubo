@@ -1,0 +1,25 @@
+# Email Worker de la casilla de intercambio DTE → RcvKiubo. Copiar a wrangler.toml y completar.
+name = "rcv-kiubo-intercambio"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+# Sin URL pública *.workers.dev: el Worker no atiende HTTP (solo email + cron).
+workers_dev = false
+
+# Reintento de lo que no pudo entrar al servicio (KV PENDIENTES) + latido.
+[triggers]
+crons = ["*/10 * * * *"]
+
+[[kv_namespaces]]
+binding = "PENDIENTES"
+# npx wrangler kv namespace create PENDIENTES → pegar el id acá.
+id = ""
+
+[vars]
+INTERCAMBIO_URL = "https://rcv.tudominio.cl/v1/intercambio/entrante"
+# Copia legible del correo. Cada destino debe estar VERIFICADO en Email Routing → Destination addresses.
+FORWARD_TO = ""
+
+[observability]
+enabled = true
+
+# INTERCAMBIO_SECRET NO va acá: npx wrangler secret put INTERCAMBIO_SECRET (el mismo valor que en el .env del servicio).
